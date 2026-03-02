@@ -17,6 +17,8 @@ class SectionDragCallback(
 ) : ItemTouchHelper.Callback() {
 
     private var dragStarted = false
+    private var lastOverDeleteZone = false
+    private var draggedSection: Section? = null
 
     override fun isLongPressDragEnabled(): Boolean = true
     override fun isItemViewSwipeEnabled(): Boolean = false
@@ -41,6 +43,14 @@ class SectionDragCallback(
         super.onSelectedChanged(viewHolder, actionState)
         if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && !dragStarted) {
             dragStarted = true
+            // Capture the section being dragged BEFORE any moves happen
+            val pos = viewHolder?.bindingAdapterPosition ?: RecyclerView.NO_POSITION
+            if (pos != RecyclerView.NO_POSITION) {
+                val item = adapter.currentList.getOrNull(pos)
+                if (item is ListItem.SectionHeader) {
+                    draggedSection = item.section
+                }
+            }
             onDragStarted()
             viewHolder?.itemView?.apply {
                 alpha = 0.9f
@@ -82,6 +92,7 @@ class SectionDragCallback(
 
             // Highlight delete zone when item is near the bottom
             val isOverDeleteZone = itemBottom > recyclerBottom - deleteZone.height
+            lastOverDeleteZone = isOverDeleteZone && deleteZone.visibility == View.VISIBLE
             if (deleteZone.visibility == View.VISIBLE) {
                 val colorRes = if (isOverDeleteZone) R.color.notepad_delete_zone_active else R.color.notepad_delete_zone
                 deleteZone.setBackgroundColor(ContextCompat.getColor(recyclerView.context, colorRes))
@@ -103,25 +114,13 @@ class SectionDragCallback(
         if (!dragStarted) return
         dragStarted = false
 
-        // Check if dropped over delete zone
-        val itemBottom = viewHolder.itemView.bottom
-        val recyclerBottom = recyclerView.height
-        val isOverDeleteZone = itemBottom > recyclerBottom - deleteZone.height && deleteZone.visibility == View.VISIBLE
+        val isOverDeleteZone = lastOverDeleteZone
+        lastOverDeleteZone = false
 
         if (isOverDeleteZone) {
-            val position = viewHolder.bindingAdapterPosition
-            val item = if (position != RecyclerView.NO_POSITION) {
-                adapter.currentList.getOrNull(position)
-            } else {
-                // Use drag list position
-                val dragOrder = adapter.getCurrentSectionOrder()
-                val idx = viewHolder.layoutPosition
-                if (idx in dragOrder.indices) {
-                    adapter.currentList.getOrNull(idx)
-                } else null
-            }
-            if (item is ListItem.SectionHeader) {
-                onDeleteDrop(item.section)
+            val section = draggedSection
+            if (section != null) {
+                onDeleteDrop(section)
             } else {
                 onReorder(adapter.getCurrentSectionOrder())
             }
@@ -129,6 +128,7 @@ class SectionDragCallback(
             onReorder(adapter.getCurrentSectionOrder())
         }
 
+        draggedSection = null
         adapter.clearDragState()
     }
 }

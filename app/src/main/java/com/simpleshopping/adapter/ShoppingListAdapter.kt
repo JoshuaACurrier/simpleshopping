@@ -89,7 +89,7 @@ class ShoppingListAdapter(
         fun bind(section: Section, mode: AppMode, isCollapsed: Boolean) {
             binding.sectionName.text = section.name
             binding.btnEditSection.visibility =
-                if (mode == AppMode.CREATE && !section.isDefault && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) View.VISIBLE else View.GONE
+                if (mode == AppMode.CREATE && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) View.VISIBLE else View.GONE
             binding.btnEditSection.setOnClickListener { onSectionEdit(section) }
 
             if (mode == AppMode.CREATE && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) {
@@ -315,8 +315,13 @@ class ShoppingListAdapter(
         return list.filterIsInstance<ListItem.SectionHeader>().map { it.section.id }
     }
 
+    @Suppress("NotifyDataSetChanged")
     fun clearDragState() {
         dragList = null
+        // moveItem() calls notifyItemMoved() during drag, which desyncs the
+        // RecyclerView's visual positions from the adapter's internal list.
+        // Reset so the next submitList() dispatches correct positional updates.
+        notifyDataSetChanged()
     }
 
     companion object {

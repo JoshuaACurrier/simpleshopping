@@ -63,7 +63,6 @@
 
     <!-- Drag reorder -->
     <string name="drop_here_to_delete">Drop here to delete</string>
-    <string name="cannot_delete_default_section">Default sections can\'t be deleted</string>
-    <string name="delete_section_confirm_title">Delete Section?</string>
+<string name="delete_section_confirm_title">Delete Section?</string>
     <string name="delete_section_confirm_message">This will delete \"%1$s\" and all its items.</string>
 </resources>

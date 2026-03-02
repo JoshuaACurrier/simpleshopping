@@ -51,7 +51,7 @@ class AddSectionDialogFragment : DialogFragment() {
             }
             .setNegativeButton(R.string.cancel, null)
 
-        if (section != null && !section.isDefault) {
+        if (section != null) {
             builder.setNeutralButton(R.string.delete_section) { _, _ ->
                 viewModel.deleteSection(section)
             }

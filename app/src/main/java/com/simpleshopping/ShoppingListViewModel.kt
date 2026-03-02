@@ -103,7 +103,7 @@ class ShoppingListViewModel(
 
             val displayItems = if (iGotItEnabled) unchecked else visibleItems
 
-            if (displayItems.isNotEmpty() || section.isDefault) {
+            if (displayItems.isNotEmpty() || section.isDefault || mode == AppMode.CREATE) {
                 val isCollapsed = mode == AppMode.SHOPPING && section.id in collapsedSections
                 result.add(ListItem.SectionHeader(section, isCollapsed, mode))
 

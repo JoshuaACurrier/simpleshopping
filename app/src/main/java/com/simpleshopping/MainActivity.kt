@@ -160,29 +160,23 @@ class MainActivity : AppCompatActivity() {
                 hideDeleteZone()
             },
             onDeleteDrop = { section ->
-                if (section.isDefault) {
-                    Toast.makeText(this, R.string.cannot_delete_default_section, Toast.LENGTH_SHORT).show()
-                    viewModel.stopSectionDrag()
-                    hideDeleteZone()
-                } else {
-                    MaterialAlertDialogBuilder(this)
-                        .setTitle(R.string.delete_section_confirm_title)
-                        .setMessage(getString(R.string.delete_section_confirm_message, section.name))
-                        .setPositiveButton(R.string.delete_section) { _, _ ->
-                            viewModel.deleteSection(section)
-                            viewModel.stopSectionDrag()
-                            hideDeleteZone()
-                        }
-                        .setNegativeButton(R.string.cancel) { _, _ ->
-                            viewModel.stopSectionDrag()
-                            hideDeleteZone()
-                        }
-                        .setOnCancelListener {
-                            viewModel.stopSectionDrag()
-                            hideDeleteZone()
-                        }
-                        .show()
-                }
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.delete_section_confirm_title)
+                    .setMessage(getString(R.string.delete_section_confirm_message, section.name))
+                    .setPositiveButton(R.string.delete_section) { _, _ ->
+                        viewModel.deleteSection(section)
+                        viewModel.stopSectionDrag()
+                        hideDeleteZone()
+                    }
+                    .setNegativeButton(R.string.cancel) { _, _ ->
+                        viewModel.stopSectionDrag()
+                        hideDeleteZone()
+                    }
+                    .setOnCancelListener {
+                        viewModel.stopSectionDrag()
+                        hideDeleteZone()
+                    }
+                    .show()
             }
         )
         ItemTouchHelper(dragCallback).attachToRecyclerView(binding.recyclerView)
