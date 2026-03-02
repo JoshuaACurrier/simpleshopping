@@ -1,7 +1,7 @@
 package com.simpleshopping
 
-import android.graphics.Color
 import android.view.View
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.simpleshopping.adapter.ListItem
@@ -31,7 +31,7 @@ class SectionDragCallback(
         val position = viewHolder.bindingAdapterPosition
         if (position == RecyclerView.NO_POSITION) return 0
         val item = adapter.currentList.getOrNull(position)
-        if (item is ListItem.SectionHeader && item.section.id == -1L) return 0
+        if (item is ListItem.SectionHeader && item.section.id == ShoppingListViewModel.I_GOT_IT_SECTION_ID) return 0
 
         val dragFlags = ItemTouchHelper.UP or ItemTouchHelper.DOWN
         return makeMovementFlags(dragFlags, 0)
@@ -83,9 +83,8 @@ class SectionDragCallback(
             // Highlight delete zone when item is near the bottom
             val isOverDeleteZone = itemBottom > recyclerBottom - deleteZone.height
             if (deleteZone.visibility == View.VISIBLE) {
-                deleteZone.setBackgroundColor(
-                    if (isOverDeleteZone) Color.parseColor("#C62828") else Color.parseColor("#E53935")
-                )
+                val colorRes = if (isOverDeleteZone) R.color.notepad_delete_zone_active else R.color.notepad_delete_zone
+                deleteZone.setBackgroundColor(ContextCompat.getColor(recyclerView.context, colorRes))
                 deleteZone.scaleX = if (isOverDeleteZone) 1.05f else 1.0f
                 deleteZone.scaleY = if (isOverDeleteZone) 1.05f else 1.0f
             }

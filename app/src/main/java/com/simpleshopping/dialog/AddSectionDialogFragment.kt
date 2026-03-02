@@ -16,35 +16,34 @@ class AddSectionDialogFragment : DialogFragment() {
     private var _binding: DialogAddSectionBinding? = null
     private val binding get() = _binding!!
 
-    private val existingSection: Section?
-        get() {
-            val id = arguments?.getLong(ARG_SECTION_ID, -1L) ?: -1L
-            val name = arguments?.getString(ARG_SECTION_NAME)
-            val sortOrder = arguments?.getInt(ARG_SECTION_SORT_ORDER, 0) ?: 0
-            val isDefault = arguments?.getBoolean(ARG_SECTION_IS_DEFAULT, false) ?: false
-            return if (id != -1L && name != null) {
-                Section(id = id, name = name, sortOrder = sortOrder, isDefault = isDefault)
-            } else null
-        }
+    private val existingSection: Section? by lazy {
+        val args = arguments ?: return@lazy null
+        val id = args.getLong(ARG_SECTION_ID, -1L)
+        val name = args.getString(ARG_SECTION_NAME)
+        val sortOrder = args.getInt(ARG_SECTION_SORT_ORDER, 0)
+        val isDefault = args.getBoolean(ARG_SECTION_IS_DEFAULT, false)
+        if (id != -1L && name != null) {
+            Section(id = id, name = name, sortOrder = sortOrder, isDefault = isDefault)
+        } else null
+    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         _binding = DialogAddSectionBinding.inflate(layoutInflater)
 
         val section = existingSection
-        val isEditing = section != null
 
-        if (isEditing) {
-            binding.sectionNameInput.setText(section!!.name)
+        if (section != null) {
+            binding.sectionNameInput.setText(section.name)
         }
 
         val builder = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(if (isEditing) R.string.edit_section_title else R.string.add_section_title)
+            .setTitle(if (section != null) R.string.edit_section_title else R.string.add_section_title)
             .setView(binding.root)
-            .setPositiveButton(if (isEditing) R.string.save else R.string.add) { _, _ ->
+            .setPositiveButton(if (section != null) R.string.save else R.string.add) { _, _ ->
                 val name = binding.sectionNameInput.text.toString().trim()
                 if (name.isNotEmpty()) {
-                    if (isEditing) {
-                        viewModel.updateSection(section!!, name)
+                    if (section != null) {
+                        viewModel.updateSection(section, name)
                     } else {
                         viewModel.addSection(name)
                     }
@@ -52,7 +51,7 @@ class AddSectionDialogFragment : DialogFragment() {
             }
             .setNegativeButton(R.string.cancel, null)
 
-        if (isEditing && !section!!.isDefault) {
+        if (section != null && !section.isDefault) {
             builder.setNeutralButton(R.string.delete_section) { _, _ ->
                 viewModel.deleteSection(section)
             }

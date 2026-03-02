@@ -34,22 +34,24 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
-    private val prefs by lazy {
-        getSharedPreferences("shopping_prefs", Context.MODE_PRIVATE)
-    }
-
     private val viewModel: ShoppingListViewModel by viewModels {
         val db = ShoppingDatabase.getInstance(applicationContext)
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val repository = ShoppingRepository(
-            db, db.sectionDao(), db.itemDao(), db.itemHistoryDao(), db.tripSnapshotDao()
+            db, db.sectionDao(), db.itemDao(), db.itemHistoryDao(), db.tripSnapshotDao(), prefs
         )
-        ShoppingListViewModel.Factory(repository, prefs)
+        ShoppingListViewModel.Factory(repository)
     }
 
     private lateinit var adapter: ShoppingListAdapter
     private var currentMode: AppMode? = null
     private var hasShownDoneToast = false
     private var modeColorAnimator: ValueAnimator? = null
+    private var deleteZoneAnimator: ObjectAnimator? = null
+    private val touchRect = Rect()
+
+    private var toolbarColorCreate = 0
+    private var toolbarColorShopping = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeManager.applySavedTheme(this)
@@ -57,11 +59,21 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        toolbarColorCreate = ContextCompat.getColor(this, R.color.notepad_toolbar_bg)
+        toolbarColorShopping = ContextCompat.getColor(this, R.color.notepad_shopping_toolbar_bg)
+
         setupToolbar()
         setupRecyclerView()
         setupDragReorder()
         setupFab()
         observeState()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        modeColorAnimator?.cancel()
+        deleteZoneAnimator?.cancel()
+        binding.recyclerView.animate().cancel()
     }
 
     private fun setupToolbar() {
@@ -93,7 +105,6 @@ class MainActivity : AppCompatActivity() {
                 R.id.action_i_got_it -> {
                     val newValue = !viewModel.iGotItEnabled.value
                     viewModel.setIGotItEnabled(newValue)
-                    prefs.edit().putBoolean("i_got_it_enabled", newValue).apply()
                     menuItem.isChecked = newValue
                     true
                 }
@@ -178,10 +189,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDeleteZone() {
+        deleteZoneAnimator?.cancel()
         binding.deleteZone.apply {
             visibility = View.VISIBLE
             translationY = height.toFloat()
-            ObjectAnimator.ofFloat(this, "translationY", height.toFloat(), 0f).apply {
+            deleteZoneAnimator = ObjectAnimator.ofFloat(this, "translationY", height.toFloat(), 0f).apply {
                 duration = 200
                 start()
             }
@@ -189,8 +201,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideDeleteZone() {
+        deleteZoneAnimator?.cancel()
         binding.deleteZone.apply {
-            ObjectAnimator.ofFloat(this, "translationY", 0f, height.toFloat()).apply {
+            deleteZoneAnimator = ObjectAnimator.ofFloat(this, "translationY", 0f, height.toFloat()).apply {
                 duration = 200
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -213,7 +226,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeState() {
-        // Auto-finish if app was closed while shopping was complete
         viewModel.checkAutoFinish()
 
         lifecycleScope.launch {
@@ -280,31 +292,25 @@ class MainActivity : AppCompatActivity() {
         currentMode = mode
 
         val toggleItem = binding.toolbar.menu.findItem(R.id.action_toggle_mode)
-        val toolbarColorCreate = ContextCompat.getColor(this, R.color.notepad_toolbar_bg)
-        val toolbarColorShopping = ContextCompat.getColor(this, R.color.notepad_shopping_toolbar_bg)
 
         when (mode) {
             AppMode.CREATE -> {
                 binding.toolbar.title = getString(R.string.mode_create)
                 toggleItem?.title = getString(R.string.switch_to_shopping)
-                toggleItem?.setIcon(android.R.drawable.ic_menu_agenda)
                 binding.fabStartShopping.show()
             }
             AppMode.SHOPPING -> {
                 binding.toolbar.title = getString(R.string.mode_shopping)
                 toggleItem?.title = getString(R.string.switch_to_create)
-                toggleItem?.setIcon(android.R.drawable.ic_menu_edit)
                 binding.fabStartShopping.hide()
             }
         }
 
         if (didChange && !isFirstRun) {
-            // Cancel any in-flight animations
             modeColorAnimator?.cancel()
             binding.recyclerView.animate().cancel()
             binding.recyclerView.alpha = 1f
 
-            // Toolbar color transition
             val fromColor = if (mode == AppMode.SHOPPING) toolbarColorCreate else toolbarColorShopping
             val toColor = if (mode == AppMode.SHOPPING) toolbarColorShopping else toolbarColorCreate
             modeColorAnimator = ValueAnimator.ofObject(ArgbEvaluator(), fromColor, toColor).apply {
@@ -317,7 +323,6 @@ class MainActivity : AppCompatActivity() {
                 start()
             }
 
-            // RecyclerView crossfade
             binding.recyclerView.animate()
                 .alpha(0f)
                 .setDuration(150)
@@ -329,7 +334,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 .start()
         } else if (isFirstRun) {
-            // Set toolbar color without animation on first launch
             val color = if (mode == AppMode.SHOPPING) toolbarColorShopping else toolbarColorCreate
             binding.toolbar.setBackgroundColor(color)
             binding.appBarLayout.setBackgroundColor(color)
@@ -371,13 +375,10 @@ class MainActivity : AppCompatActivity() {
         if (ev.action == MotionEvent.ACTION_DOWN) {
             val focused = currentFocus
             if (focused is EditText) {
-                val rect = Rect()
-                focused.getGlobalVisibleRect(rect)
-                if (!rect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
+                focused.getGlobalVisibleRect(touchRect)
+                if (!touchRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
                     focused.clearFocus()
                     hideKeyboard()
-                    // Consume the event so the tap doesn't also trigger
-                    // another action (e.g. opening inline input on a different section)
                     return true
                 }
             }
@@ -388,5 +389,9 @@ class MainActivity : AppCompatActivity() {
     private fun hideKeyboard() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         currentFocus?.let { imm.hideSoftInputFromWindow(it.windowToken, 0) }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "shopping_prefs"
     }
 }

@@ -37,10 +37,6 @@
     <string name="new_trip_confirm_message">This will clear all non-recurring items and uncheck everything. Your current list will be saved so you can repeat it later.</string>
     <string name="start_trip">Start Trip</string>
 
-    <!-- Empty state -->
-    <string name="empty_list_create">Your list is empty.\nTap a section to add items.</string>
-    <string name="empty_list_shopping">Nothing to shop for.\nAdd items in Shopping List mode first.</string>
-
     <!-- Done shopping -->
     <string name="done_shopping">Done!</string>
     <string-array name="done_shopping_messages">
@@ -61,6 +57,9 @@
 
     <!-- I got it -->
     <string name="i_got_it_toggle">Move checked to \"I got it!\"</string>
+
+    <!-- Accessibility -->
+    <string name="quantity_description">Quantity: %1$d</string>
 
     <!-- Drag reorder -->
     <string name="drop_here_to_delete">Drop here to delete</string>

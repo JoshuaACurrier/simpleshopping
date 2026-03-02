@@ -26,6 +26,7 @@ class AddItemDialogFragment : DialogFragment() {
     private var sections: List<Section> = emptyList()
     private var selectedSection: Section? = null
     private var autocompleteJob: Job? = null
+    private var sectionCollectionJob: Job? = null
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         _binding = DialogAddItemBinding.inflate(layoutInflater)
@@ -39,8 +40,9 @@ class AddItemDialogFragment : DialogFragment() {
             .setPositiveButton(R.string.add) { _, _ ->
                 val name = binding.itemNameInput.text.toString().trim()
                 val isRecurring = binding.recurringSwitch.isChecked
-                if (name.isNotEmpty() && selectedSection != null) {
-                    viewModel.addItem(name, selectedSection!!.id, isRecurring)
+                val section = selectedSection
+                if (name.isNotEmpty() && section != null) {
+                    viewModel.addItem(name, section.id, isRecurring)
                 }
             }
             .setNegativeButton(R.string.cancel, null)
@@ -48,14 +50,13 @@ class AddItemDialogFragment : DialogFragment() {
     }
 
     private fun setupSectionDropdown() {
-        lifecycleScope.launch {
+        sectionCollectionJob = lifecycleScope.launch {
             viewModel.sections.collect { sectionList ->
                 sections = sectionList
                 val names = sectionList.map { it.name }
                 val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, names)
                 binding.sectionDropdown.setAdapter(adapter)
 
-                // Default to first section
                 if (selectedSection == null && sectionList.isNotEmpty()) {
                     selectedSection = sectionList[0]
                     binding.sectionDropdown.setText(sectionList[0].name, false)
@@ -78,8 +79,9 @@ class AddItemDialogFragment : DialogFragment() {
 
                 autocompleteJob?.cancel()
                 autocompleteJob = lifecycleScope.launch {
-                    delay(300) // debounce
+                    delay(300)
                     val results = viewModel.searchHistory(query)
+                    if (_binding == null) return@launch
                     if (results.isNotEmpty()) {
                         val names = results.map { it.name }
                         val adapter = ArrayAdapter(
@@ -96,11 +98,12 @@ class AddItemDialogFragment : DialogFragment() {
             }
         })
 
-        binding.itemNameInput.setOnItemClickListener { _, _, position, _ ->
-            // When user picks from autocomplete, also set the section
+        binding.itemNameInput.setOnItemClickListener { _, _, _, _ ->
             val selectedName = binding.itemNameInput.text.toString()
-            lifecycleScope.launch {
+            autocompleteJob?.cancel()
+            autocompleteJob = lifecycleScope.launch {
                 val results = viewModel.searchHistory(selectedName)
+                if (_binding == null) return@launch
                 val match = results.firstOrNull { it.name == selectedName }
                 if (match != null) {
                     val section = sections.firstOrNull { it.id == match.sectionId }
@@ -114,6 +117,8 @@ class AddItemDialogFragment : DialogFragment() {
     }
 
     override fun onDestroyView() {
+        autocompleteJob?.cancel()
+        sectionCollectionJob?.cancel()
         super.onDestroyView()
         _binding = null
     }

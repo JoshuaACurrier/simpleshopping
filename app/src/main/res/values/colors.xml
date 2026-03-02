@@ -15,4 +15,9 @@
     <color name="notepad_toolbar_text">#FF3E2723</color>
     <color name="notepad_fab_bg">#FFF57F17</color>
     <color name="notepad_fab_icon">#FFFFFFFF</color>
+
+    <!-- Done / delete zone -->
+    <color name="notepad_done_bg">#FF4CAF50</color>
+    <color name="notepad_delete_zone">#FFE53935</color>
+    <color name="notepad_delete_zone_active">#FFC62828</color>
 </resources>

@@ -1,6 +1,5 @@
 package com.simpleshopping
 
-import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -19,9 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ShoppingListViewModel(
-    private val repository: ShoppingRepository,
-    private val prefs: SharedPreferences,
-    initialIGotItEnabled: Boolean = false
+    private val repository: ShoppingRepository
 ) : ViewModel() {
 
     private val _mode = MutableStateFlow(AppMode.CREATE)
@@ -37,7 +34,7 @@ class ShoppingListViewModel(
     private val _inlineInputSectionId = MutableStateFlow<Long?>(null)
     val inlineInputSectionId: StateFlow<Long?> = _inlineInputSectionId.asStateFlow()
 
-    private val _iGotItEnabled = MutableStateFlow(initialIGotItEnabled)
+    private val _iGotItEnabled = MutableStateFlow(repository.isIGotItEnabled())
     val iGotItEnabled: StateFlow<Boolean> = _iGotItEnabled.asStateFlow()
 
     private val _collapsedSections = MutableStateFlow<Set<Long>>(emptySet())
@@ -45,24 +42,26 @@ class ShoppingListViewModel(
     private val _isDraggingSections = MutableStateFlow(false)
     val isDraggingSections: StateFlow<Boolean> = _isDraggingSections.asStateFlow()
 
+    private data class UiConfig(
+        val inlineInputSectionId: Long?,
+        val iGotItEnabled: Boolean,
+        val collapsedSections: Set<Long>,
+        val mode: AppMode
+    )
+
     val listItems: StateFlow<List<ListItem>> = combine(
         repository.allSections,
         repository.allItems,
         combine(_sortMode, _isDraggingSections) { sort, drag -> sort to drag },
         combine(_inlineInputSectionId, _iGotItEnabled, _collapsedSections, _mode) { a, b, c, d ->
-            listOf(a, b, c, d)
+            UiConfig(a, b, c, d)
         }
-    ) { sections, items, sortAndDrag, extras ->
+    ) { sections, items, sortAndDrag, config ->
         val (sortMode, isDragging) = sortAndDrag
-        @Suppress("UNCHECKED_CAST")
-        val inlineInputSectionId = extras[0] as Long?
-        val iGotItEnabled = extras[1] as Boolean
-        val collapsedSections = extras[2] as Set<Long>
-        val mode = extras[3] as AppMode
         if (isDragging) {
             sections.map { ListItem.SectionHeader(it) }
         } else {
-            buildFlatList(sections, items, sortMode, inlineInputSectionId, iGotItEnabled, collapsedSections, mode)
+            buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -106,7 +105,7 @@ class ShoppingListViewModel(
 
             if (displayItems.isNotEmpty() || section.isDefault) {
                 val isCollapsed = mode == AppMode.SHOPPING && section.id in collapsedSections
-                result.add(ListItem.SectionHeader(section, isCollapsed))
+                result.add(ListItem.SectionHeader(section, isCollapsed, mode))
 
                 if (!isCollapsed) {
                     if (inlineInputSectionId == section.id) {
@@ -117,19 +116,19 @@ class ShoppingListViewModel(
                         SortMode.MANUAL -> displayItems.sortedBy { it.sortOrder }
                         SortMode.STORE_ROUTE -> displayItems.sortedBy { it.checkPosition ?: Int.MAX_VALUE }
                     }
-                    result.addAll(sorted.map { ListItem.ShoppingItem(it) })
+                    result.addAll(sorted.map { ListItem.ShoppingItem(it, mode) })
                 }
             }
         }
 
         if (iGotItEnabled && iGotItItems.isNotEmpty()) {
-            val isCollapsed = -1L in collapsedSections
-            val virtualSection = Section(id = -1, name = "I got it!", sortOrder = Int.MAX_VALUE, isDefault = false)
-            result.add(ListItem.SectionHeader(virtualSection, isCollapsed))
+            val isCollapsed = I_GOT_IT_SECTION_ID in collapsedSections
+            val virtualSection = Section(id = I_GOT_IT_SECTION_ID, name = "I got it!", sortOrder = Int.MAX_VALUE, isDefault = false)
+            result.add(ListItem.SectionHeader(virtualSection, isCollapsed, mode))
             if (!isCollapsed) {
                 result.addAll(
                     iGotItItems.sortedBy { it.checkPosition ?: Int.MAX_VALUE }
-                        .map { ListItem.ShoppingItem(it) }
+                        .map { ListItem.ShoppingItem(it, mode) }
                 )
             }
         }
@@ -168,6 +167,7 @@ class ShoppingListViewModel(
 
     fun setIGotItEnabled(enabled: Boolean) {
         _iGotItEnabled.value = enabled
+        repository.setIGotItEnabled(enabled)
     }
 
     // --- Collapsible sections ---
@@ -262,19 +262,19 @@ class ShoppingListViewModel(
     fun finishShopping() {
         viewModelScope.launch {
             repository.startNewTrip()
-            prefs.edit().putBoolean("shopping_complete", false).apply()
+            repository.setShoppingComplete(false)
             _mode.value = AppMode.CREATE
         }
     }
 
     fun checkAutoFinish() {
-        if (prefs.getBoolean("shopping_complete", false)) {
+        if (repository.isShoppingComplete()) {
             finishShopping()
         }
     }
 
     fun markShoppingComplete() {
-        prefs.edit().putBoolean("shopping_complete", true).apply()
+        repository.setShoppingComplete(true)
     }
 
     fun copyLastTrip(onNoSnapshot: () -> Unit) {
@@ -300,13 +300,15 @@ class ShoppingListViewModel(
     // --- Factory ---
 
     class Factory(
-        private val repository: ShoppingRepository,
-        private val prefs: SharedPreferences
+        private val repository: ShoppingRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val iGotItEnabled = prefs.getBoolean("i_got_it_enabled", false)
-            return ShoppingListViewModel(repository, prefs, iGotItEnabled) as T
+            return ShoppingListViewModel(repository) as T
         }
+    }
+
+    companion object {
+        const val I_GOT_IT_SECTION_ID = -1L
     }
 }

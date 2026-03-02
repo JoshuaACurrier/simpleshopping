@@ -36,7 +36,7 @@ interface ItemDao {
     @Query("SELECT COALESCE(MAX(check_position), 0) + 1 FROM items WHERE check_position IS NOT NULL")
     suspend fun getNextCheckPosition(): Int
 
-    @Query("SELECT * FROM items WHERE name = :name AND section_id = :sectionId AND is_checked = 0 LIMIT 1")
+    @Query("SELECT * FROM items WHERE name = :name COLLATE NOCASE AND section_id = :sectionId AND is_checked = 0 LIMIT 1")
     suspend fun findByNameAndSection(name: String, sectionId: Long): Item?
 
     @Query("UPDATE items SET quantity = quantity + :amount WHERE id = :itemId")

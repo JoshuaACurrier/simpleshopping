@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.simpleshopping.AppMode
+import com.simpleshopping.ShoppingListViewModel
 import com.simpleshopping.data.Item
 import com.simpleshopping.data.ItemHistory
 import com.simpleshopping.data.Section
@@ -40,13 +41,8 @@ class ShoppingListAdapter(
     private val coroutineScope: CoroutineScope? = null
 ) : ListAdapter<ListItem, RecyclerView.ViewHolder>(ListItemDiffCallback()) {
 
+    // Mode is tracked for drag callback checks; binding uses mode from ListItem
     var mode: AppMode = AppMode.CREATE
-        set(value) {
-            if (field != value) {
-                field = value
-                notifyDataSetChanged()
-            }
-        }
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is ListItem.SectionHeader -> VIEW_TYPE_HEADER
@@ -72,9 +68,17 @@ class ShoppingListAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
-            is ListItem.SectionHeader -> (holder as SectionViewHolder).bind(item.section, mode, item.isCollapsed)
-            is ListItem.ShoppingItem -> (holder as ItemViewHolder).bind(item.item, mode)
+            is ListItem.SectionHeader -> (holder as SectionViewHolder).bind(item.section, item.mode, item.isCollapsed)
+            is ListItem.ShoppingItem -> (holder as ItemViewHolder).bind(item.item, item.mode)
             is ListItem.InlineInput -> (holder as InlineInputViewHolder).bind(item.sectionId)
+        }
+    }
+
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        when (holder) {
+            is ItemViewHolder -> holder.cleanup()
+            is InlineInputViewHolder -> holder.cleanup()
         }
     }
 
@@ -85,10 +89,10 @@ class ShoppingListAdapter(
         fun bind(section: Section, mode: AppMode, isCollapsed: Boolean) {
             binding.sectionName.text = section.name
             binding.btnEditSection.visibility =
-                if (mode == AppMode.CREATE && !section.isDefault && section.id != -1L) View.VISIBLE else View.GONE
+                if (mode == AppMode.CREATE && !section.isDefault && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) View.VISIBLE else View.GONE
             binding.btnEditSection.setOnClickListener { onSectionEdit(section) }
 
-            if (mode == AppMode.CREATE && section.id != -1L) {
+            if (mode == AppMode.CREATE && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) {
                 binding.root.setOnClickListener { onSectionTapped(section.id) }
             } else if (mode == AppMode.SHOPPING) {
                 binding.root.setOnClickListener { onSectionCollapseToggle(section.id) }
@@ -110,11 +114,12 @@ class ShoppingListAdapter(
 
             applyCheckedState(item.isChecked)
 
-            // Show quantity badge only for 2+
             binding.quantityBadge.visibility = if (item.quantity > 1) View.VISIBLE else View.GONE
             binding.quantityBadge.text = item.quantity.toString()
+            binding.quantityBadge.contentDescription = itemView.context.getString(
+                com.simpleshopping.R.string.quantity_description, item.quantity
+            )
 
-            // Star icon — only in CREATE mode
             when (mode) {
                 AppMode.CREATE -> {
                     binding.starIcon.visibility = View.VISIBLE
@@ -142,6 +147,11 @@ class ShoppingListAdapter(
                     binding.root.setOnLongClickListener(null)
                 }
             }
+        }
+
+        fun cleanup() {
+            crossOffAnimator?.cancel()
+            crossOffAnimator = null
         }
 
         private fun applyCheckedState(isChecked: Boolean) {
@@ -184,7 +194,7 @@ class ShoppingListAdapter(
 
         fun bind(sectionId: Long) {
             boundSectionId = sectionId
-            textWatcher?.let { binding.inlineItemName.removeTextChangedListener(it) }
+            cleanup()
             binding.inlineItemName.setText("")
             binding.inlineItemName.requestFocus()
 
@@ -228,6 +238,13 @@ class ShoppingListAdapter(
                     onInlineDismiss()
                 }
             }
+        }
+
+        fun cleanup() {
+            autocompleteJob?.cancel()
+            autocompleteJob = null
+            textWatcher?.let { binding.inlineItemName.removeTextChangedListener(it) }
+            textWatcher = null
         }
 
         private fun setupAutocomplete() {

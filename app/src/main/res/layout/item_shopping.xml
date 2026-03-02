@@ -12,11 +12,12 @@
 
     <ImageView
         android:id="@+id/starIcon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_marginEnd="4dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="12dp"
         android:src="@android:drawable/btn_star_big_off"
         android:contentDescription="@string/toggle_recurring"
+        android:background="?attr/selectableItemBackgroundBorderless"
         android:visibility="gone" />
 
     <TextView

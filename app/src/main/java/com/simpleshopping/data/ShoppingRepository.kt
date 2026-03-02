@@ -1,5 +1,6 @@
 package com.simpleshopping.data
 
+import android.content.SharedPreferences
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 
@@ -8,10 +9,30 @@ class ShoppingRepository(
     private val sectionDao: SectionDao,
     private val itemDao: ItemDao,
     private val itemHistoryDao: ItemHistoryDao,
-    private val tripSnapshotDao: TripSnapshotDao
+    private val tripSnapshotDao: TripSnapshotDao,
+    private val prefs: SharedPreferences
 ) {
     val allSections: Flow<List<Section>> = sectionDao.getAllSections()
     val allItems: Flow<List<Item>> = itemDao.getAllItems()
+
+    // --- Preferences ---
+
+    fun isShoppingComplete(): Boolean = prefs.getBoolean(PREF_SHOPPING_COMPLETE, false)
+
+    fun setShoppingComplete(complete: Boolean) {
+        prefs.edit().putBoolean(PREF_SHOPPING_COMPLETE, complete).apply()
+    }
+
+    fun isIGotItEnabled(): Boolean = prefs.getBoolean(PREF_I_GOT_IT_ENABLED, false)
+
+    fun setIGotItEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(PREF_I_GOT_IT_ENABLED, enabled).apply()
+    }
+
+    companion object {
+        const val PREF_SHOPPING_COMPLETE = "shopping_complete"
+        const val PREF_I_GOT_IT_ENABLED = "i_got_it_enabled"
+    }
 
     // --- Sections ---
 
@@ -35,25 +56,27 @@ class ShoppingRepository(
     // --- Items ---
 
     suspend fun addItem(name: String, sectionId: Long, isRecurring: Boolean = false): Long {
-        // Duplicate detection: if same unchecked item exists in same section, increment qty
-        val existing = itemDao.findByNameAndSection(name, sectionId)
-        if (existing != null) {
-            itemDao.incrementQuantity(existing.id)
-            recordHistory(name, sectionId)
-            return existing.id
+        return database.withTransaction {
+            // Duplicate detection: if same unchecked item exists in same section, increment qty
+            val existing = itemDao.findByNameAndSection(name, sectionId)
+            if (existing != null) {
+                itemDao.incrementQuantity(existing.id)
+                recordHistory(name, sectionId)
+                existing.id
+            } else {
+                val sortOrder = itemDao.getNextSortOrder(sectionId)
+                val id = itemDao.insert(
+                    Item(
+                        name = name,
+                        sectionId = sectionId,
+                        isRecurring = isRecurring,
+                        sortOrder = sortOrder
+                    )
+                )
+                recordHistory(name, sectionId)
+                id
+            }
         }
-
-        val sortOrder = itemDao.getNextSortOrder(sectionId)
-        val id = itemDao.insert(
-            Item(
-                name = name,
-                sectionId = sectionId,
-                isRecurring = isRecurring,
-                sortOrder = sortOrder
-            )
-        )
-        recordHistory(name, sectionId)
-        return id
     }
 
     private suspend fun recordHistory(name: String, sectionId: Long) {

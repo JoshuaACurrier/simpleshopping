@@ -5,13 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 @Database(
     entities = [Section::class, Item::class, ItemHistory::class, TripSnapshot::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class ShoppingDatabase : RoomDatabase() {
@@ -104,7 +102,9 @@ abstract class ShoppingDatabase : RoomDatabase() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)
                 INSTANCE?.let { database ->
-                    CoroutineScope(Dispatchers.IO).launch {
+                    // runBlocking is safe here: Room's onCreate runs on a background thread,
+                    // and we must finish prepopulation before any query can execute.
+                    runBlocking {
                         val sectionDao = database.sectionDao()
                         val historyDao = database.itemHistoryDao()
                         val sectionIds = mutableMapOf<String, Long>()
