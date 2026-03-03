@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,6 +44,8 @@ class ShoppingListViewModel(
     private val _isDraggingSections = MutableStateFlow(false)
     val isDraggingSections: StateFlow<Boolean> = _isDraggingSections.asStateFlow()
 
+    private val _demoItems = MutableStateFlow<List<ListItem>?>(null)
+
     private data class UiConfig(
         val inlineInputSectionId: Long?,
         val iGotItEnabled: Boolean,
@@ -49,19 +53,26 @@ class ShoppingListViewModel(
         val mode: AppMode
     )
 
-    val listItems: StateFlow<List<ListItem>> = combine(
-        repository.allSections,
-        repository.allItems,
-        combine(_sortMode, _isDraggingSections) { sort, drag -> sort to drag },
-        combine(_inlineInputSectionId, _iGotItEnabled, _collapsedSections, _mode) { a, b, c, d ->
-            UiConfig(a, b, c, d)
-        }
-    ) { sections, items, sortAndDrag, config ->
-        val (sortMode, isDragging) = sortAndDrag
-        if (isDragging) {
-            sections.map { ListItem.SectionHeader(it) }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val listItems: StateFlow<List<ListItem>> = _demoItems.flatMapLatest { demo ->
+        if (demo != null) {
+            flowOf(demo)
         } else {
-            buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
+            combine(
+                repository.allSections,
+                repository.allItems,
+                combine(_sortMode, _isDraggingSections) { sort, drag -> sort to drag },
+                combine(_inlineInputSectionId, _iGotItEnabled, _collapsedSections, _mode) { a, b, c, d ->
+                    UiConfig(a, b, c, d)
+                }
+            ) { sections, items, sortAndDrag, config ->
+                val (sortMode, isDragging) = sortAndDrag
+                if (isDragging) {
+                    sections.map { ListItem.SectionHeader(it) }
+                } else {
+                    buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
+                }
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -134,6 +145,12 @@ class ShoppingListViewModel(
         }
 
         return result
+    }
+
+    // --- Demo mode ---
+
+    fun setDemoItems(items: List<ListItem>?) {
+        _demoItems.value = items
     }
 
     // --- Mode ---

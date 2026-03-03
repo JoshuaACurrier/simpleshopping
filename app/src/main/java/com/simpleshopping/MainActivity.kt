@@ -11,6 +11,7 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.app.AppCompatActivity
@@ -44,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var adapter: ShoppingListAdapter
+    private lateinit var tutorialManager: TutorialManager
     private var currentMode: AppMode? = null
     private var hasShownDoneToast = false
     private var modeColorAnimator: ValueAnimator? = null
@@ -67,10 +69,12 @@ class MainActivity : AppCompatActivity() {
         setupDragReorder()
         setupFab()
         observeState()
+        setupTutorial()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        tutorialManager.finish()
         modeColorAnimator?.cancel()
         deleteZoneAnimator?.cancel()
         binding.recyclerView.animate().cancel()
@@ -106,6 +110,10 @@ class MainActivity : AppCompatActivity() {
                     val newValue = !viewModel.iGotItEnabled.value
                     viewModel.setIGotItEnabled(newValue)
                     menuItem.isChecked = newValue
+                    true
+                }
+                R.id.action_show_tutorial -> {
+                    showTutorial()
                     true
                 }
                 else -> false
@@ -385,6 +393,31 @@ class MainActivity : AppCompatActivity() {
     private fun hideKeyboard() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         currentFocus?.let { imm.hideSoftInputFromWindow(it.windowToken, 0) }
+    }
+
+    private fun setupTutorial() {
+        tutorialManager = TutorialManager(this, binding, adapter, viewModel)
+
+        // Dismiss tutorial on back press
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (tutorialManager.isRunning()) {
+                    tutorialManager.finish()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
+
+        // Auto-show on first launch — TutorialManager handles its own timing
+        if (tutorialManager.shouldShowTutorial()) {
+            tutorialManager.startTutorial()
+        }
+    }
+
+    private fun showTutorial() {
+        tutorialManager.startTutorial()
     }
 
     companion object {

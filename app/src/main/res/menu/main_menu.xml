@@ -34,4 +34,9 @@
         android:checkable="true"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_show_tutorial"
+        android:title="@string/show_tutorial"
+        app:showAsAction="never" />
+
 </menu>

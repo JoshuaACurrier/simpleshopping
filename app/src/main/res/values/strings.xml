@@ -65,4 +65,44 @@
     <string name="drop_here_to_delete">Drop here to delete</string>
 <string name="delete_section_confirm_title">Delete Section?</string>
     <string name="delete_section_confirm_message">This will delete \"%1$s\" and all its items.</string>
+
+    <!-- Tutorial -->
+    <string name="show_tutorial">Show Tutorial</string>
+    <string name="tutorial_welcome_title">Welcome to Simple Shopping!</string>
+    <string name="tutorial_welcome_body">This is your shopping list.\nLet\'s walk through the basics.</string>
+    <string name="tutorial_skip">Skip</string>
+    <string name="tutorial_step_counter">Step %1$d of %2$d</string>
+    <string name="tutorial_tap_to_continue">Tap anywhere to continue</string>
+
+    <!-- Tutorial step 2: Section header -->
+    <string name="tutorial_section_title">Tap a Category</string>
+    <string name="tutorial_section_body">Tap any category to add items to it.</string>
+
+    <!-- Tutorial step 3: Item row -->
+    <string name="tutorial_item_title">Add &amp; Remove Items</string>
+    <string name="tutorial_item_body">Tap an item to add 1.\nLong press to subtract or remove it.</string>
+
+    <!-- Tutorial step 4: Hold section header -->
+    <string name="tutorial_hold_section_title">Rearrange Categories</string>
+    <string name="tutorial_hold_section_body">Hold a category to drag it into a new order, or drop it on the delete zone.</string>
+
+    <!-- Tutorial step 5: Overflow menu -->
+    <string name="tutorial_menu_title">Menu Options</string>
+    <string name="tutorial_menu_body">Use the menu to add a new category, sort by store route, and more.</string>
+
+    <!-- Tutorial step 6: FAB -->
+    <string name="tutorial_fab_title">Start Shopping</string>
+    <string name="tutorial_fab_body">When your list is ready, tap this button to switch to Shopping mode.</string>
+
+    <!-- Tutorial step 7: Tap item in shopping mode -->
+    <string name="tutorial_shopping_title">Cross Items Off</string>
+    <string name="tutorial_shopping_body">In Shopping mode, tap items to check them off as you go.</string>
+
+    <!-- Tutorial step 8: Section collapse -->
+    <string name="tutorial_collapse_title">Collapse Categories</string>
+    <string name="tutorial_collapse_body">Tap a category header to collapse or expand it while shopping.</string>
+
+    <!-- Tutorial step 9: Finish -->
+    <string name="tutorial_thank_you_title">You\'re All Set!</string>
+    <string name="tutorial_thank_you_body">Enjoy your shopping.\nYou can replay this tutorial from the menu anytime.</string>
 </resources>
