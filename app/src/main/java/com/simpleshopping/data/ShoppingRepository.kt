@@ -88,6 +88,51 @@ class ShoppingRepository(
         }
     }
 
+    suspend fun renameItem(item: Item, newName: String) {
+        database.withTransaction {
+            itemDao.update(item.copy(name = newName))
+            val oldName = item.name
+            val sectionId = item.sectionId
+            val oldEntry = itemHistoryDao.findByNameAndSection(oldName, sectionId)
+            val newEntry = itemHistoryDao.findByNameAndSection(newName, sectionId)
+            when {
+                newEntry != null -> {
+                    if (oldEntry != null) {
+                        itemHistoryDao.addUsageCount(newName, sectionId, oldEntry.usageCount)
+                        itemHistoryDao.deleteByNameAndSection(oldName, sectionId)
+                    }
+                }
+                oldEntry != null -> {
+                    itemHistoryDao.renameEntry(oldName, newName, sectionId)
+                }
+                else -> {
+                    recordHistory(newName, sectionId)
+                }
+            }
+        }
+    }
+
+    suspend fun reorderItems(ordered: List<ItemReorderEntry>) {
+        database.withTransaction {
+            ordered.forEach { entry ->
+                val item = itemDao.getById(entry.itemId) ?: return@forEach
+                val crossSection = item.sectionId != entry.targetSectionId
+                itemDao.update(item.copy(sectionId = entry.targetSectionId, sortOrder = entry.newSortOrder))
+                if (crossSection) {
+                    recordHistory(item.name, entry.targetSectionId)
+                }
+            }
+        }
+    }
+
+    suspend fun moveItemToSection(item: Item, targetSectionId: Long) {
+        database.withTransaction {
+            val sortOrder = itemDao.getNextSortOrder(targetSectionId)
+            itemDao.update(item.copy(sectionId = targetSectionId, sortOrder = sortOrder))
+            recordHistory(item.name, targetSectionId)
+        }
+    }
+
     suspend fun updateItem(item: Item) = itemDao.update(item)
 
     suspend fun deleteItem(item: Item) = itemDao.delete(item)

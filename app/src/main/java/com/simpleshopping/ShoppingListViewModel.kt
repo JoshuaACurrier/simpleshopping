@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.simpleshopping.adapter.ListItem
 import com.simpleshopping.data.Item
 import com.simpleshopping.data.ItemHistory
+import com.simpleshopping.data.ItemReorderEntry
 import com.simpleshopping.data.Section
 import com.simpleshopping.data.ShoppingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,9 @@ class ShoppingListViewModel(
     private val _isDraggingSections = MutableStateFlow(false)
     val isDraggingSections: StateFlow<Boolean> = _isDraggingSections.asStateFlow()
 
+    private val _isDraggingItems = MutableStateFlow(false)
+    private var _frozenItemDragList: List<ListItem>? = null
+
     private val _demoItems = MutableStateFlow<List<ListItem>?>(null)
 
     private data class UiConfig(
@@ -61,16 +65,16 @@ class ShoppingListViewModel(
             combine(
                 repository.allSections,
                 repository.allItems,
-                combine(_sortMode, _isDraggingSections) { sort, drag -> sort to drag },
+                combine(_sortMode, _isDraggingSections, _isDraggingItems) { sort, dragSec, dragItem -> Triple(sort, dragSec, dragItem) },
                 combine(_inlineInputSectionId, _iGotItEnabled, _collapsedSections, _mode) { a, b, c, d ->
                     UiConfig(a, b, c, d)
                 }
             ) { sections, items, sortAndDrag, config ->
-                val (sortMode, isDragging) = sortAndDrag
-                if (isDragging) {
-                    sections.map { ListItem.SectionHeader(it) }
-                } else {
-                    buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
+                val (sortMode, isDraggingSections, isDraggingItems) = sortAndDrag
+                when {
+                    isDraggingSections -> sections.map { ListItem.SectionHeader(it) }
+                    isDraggingItems -> _frozenItemDragList ?: buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
+                    else -> buildFlatList(sections, items, sortMode, config.inlineInputSectionId, config.iGotItEnabled, config.collapsedSections, config.mode)
                 }
             }
         }
@@ -245,6 +249,39 @@ class ShoppingListViewModel(
     fun reorderSections(orderedIds: List<Long>) {
         viewModelScope.launch {
             repository.reorderSections(orderedIds)
+        }
+    }
+
+    // --- Item drag reorder ---
+
+    fun startItemDrag() {
+        _inlineInputSectionId.value = null
+        _frozenItemDragList = listItems.value
+        _isDraggingItems.value = true
+    }
+
+    fun stopItemDrag() {
+        _isDraggingItems.value = false
+        _frozenItemDragList = null
+    }
+
+    fun reorderItems(ordered: List<ItemReorderEntry>, snapshot: List<ListItem>) {
+        _frozenItemDragList = snapshot   // show final drag position immediately
+        viewModelScope.launch {
+            repository.reorderItems(ordered)
+            stopItemDrag()               // unfreeze only after DB write is done
+        }
+    }
+
+    fun renameItem(item: Item, newName: String) {
+        viewModelScope.launch {
+            repository.renameItem(item, newName)
+        }
+    }
+
+    fun moveItemToSection(item: Item, targetSectionId: Long) {
+        viewModelScope.launch {
+            repository.moveItemToSection(item, targetSectionId)
         }
     }
 

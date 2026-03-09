@@ -63,6 +63,13 @@
 
     <!-- Drag reorder -->
     <string name="drop_here_to_delete">Drop here to delete</string>
+    <string name="drag_reorder">Drag to reorder</string>
+    <string name="drag_section">Drag to reorder section</string>
+    <string name="move_to_section">Move to Section</string>
+    <string name="move_item_title">Move to Section</string>
+    <string name="edit_item">Edit</string>
+    <string name="edit_item_title">Edit Item</string>
+    <string name="edit_section_menu">Edit</string>
 <string name="delete_section_confirm_title">Delete Section?</string>
     <string name="delete_section_confirm_message">This will delete \"%1$s\" and all its items.</string>
 
@@ -80,7 +87,7 @@
 
     <!-- Tutorial step 3: Item row -->
     <string name="tutorial_item_title">Add &amp; Remove Items</string>
-    <string name="tutorial_item_body">Tap an item to add 1.\nLong press to subtract or remove it.</string>
+    <string name="tutorial_item_body">Tap an item to add 1.\nLong press an item for options (Edit, Move, Delete).\nLong press the quantity badge to subtract.</string>
 
     <!-- Tutorial step 4: Hold section header -->
     <string name="tutorial_hold_section_title">Rearrange Categories</string>

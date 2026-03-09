@@ -27,4 +27,16 @@ interface ItemHistoryDao {
 
     @Query("DELETE FROM item_history")
     suspend fun clearAll()
+
+    @Query("SELECT * FROM item_history WHERE name = :name AND section_id = :sectionId LIMIT 1")
+    suspend fun findByNameAndSection(name: String, sectionId: Long): ItemHistory?
+
+    @Query("UPDATE item_history SET name = :newName WHERE name = :oldName AND section_id = :sectionId")
+    suspend fun renameEntry(oldName: String, newName: String, sectionId: Long)
+
+    @Query("UPDATE item_history SET usage_count = usage_count + :addCount WHERE name = :name AND section_id = :sectionId")
+    suspend fun addUsageCount(name: String, sectionId: Long, addCount: Int)
+
+    @Query("DELETE FROM item_history WHERE name = :name AND section_id = :sectionId")
+    suspend fun deleteByNameAndSection(name: String, sectionId: Long)
 }

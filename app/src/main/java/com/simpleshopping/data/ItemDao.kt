@@ -41,4 +41,7 @@ interface ItemDao {
 
     @Query("UPDATE items SET quantity = quantity + :amount WHERE id = :itemId")
     suspend fun incrementQuantity(itemId: Long, amount: Int = 1)
+
+    @Query("SELECT * FROM items WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): Item?
 }

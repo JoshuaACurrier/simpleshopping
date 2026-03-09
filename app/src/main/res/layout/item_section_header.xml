@@ -24,14 +24,15 @@
         android:fontFamily="?attr/notepadFontFamily"
         tools:text="PRODUCE" />
 
-    <ImageButton
-        android:id="@+id/btnEditSection"
+    <ImageView
+        android:id="@+id/sectionDragHandle"
         android:layout_width="36dp"
         android:layout_height="36dp"
+        android:padding="8dp"
+        android:src="@drawable/ic_drag_handle"
+        android:tint="?attr/notepadTextColor"
+        android:contentDescription="@string/drag_section"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/edit_section"
-        android:src="@android:drawable/ic_menu_edit"
-        android:scaleType="centerInside"
         android:visibility="gone"
         tools:visibility="visible" />
 

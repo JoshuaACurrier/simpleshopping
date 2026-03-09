@@ -10,12 +10,16 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -24,10 +28,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.simpleshopping.adapter.ListItem
 import com.simpleshopping.adapter.ShoppingListAdapter
+import com.simpleshopping.data.Item
+import com.simpleshopping.data.Section
 import com.simpleshopping.data.ShoppingDatabase
 import com.simpleshopping.data.ShoppingRepository
 import com.simpleshopping.databinding.ActivityMainBinding
 import com.simpleshopping.dialog.AddSectionDialogFragment
+import com.simpleshopping.dialog.EditItemDialogFragment
 import com.simpleshopping.theme.ThemeManager
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -45,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var adapter: ShoppingListAdapter
+    private lateinit var itemTouchHelper: ItemTouchHelper
     private lateinit var tutorialManager: TutorialManager
     private var currentMode: AppMode? = null
     private var hasShownDoneToast = false
@@ -125,11 +133,8 @@ class MainActivity : AppCompatActivity() {
         adapter = ShoppingListAdapter(
             onItemChecked = { viewModel.toggleChecked(it) },
             onItemRecurringToggle = { viewModel.toggleRecurring(it) },
-            onItemDelete = { viewModel.deleteItem(it) },
-            onSectionEdit = { section ->
-                AddSectionDialogFragment.newInstance(section)
-                    .show(supportFragmentManager, "edit_section")
-            },
+            onItemLongPress = { item, anchor -> showItemContextMenu(item, anchor) },
+            onSectionLongPress = { section, anchor -> showSectionContextMenu(section, anchor) },
             onSectionTapped = { sectionId ->
                 viewModel.showInlineInput(sectionId)
             },
@@ -146,28 +151,56 @@ class MainActivity : AppCompatActivity() {
             onSectionCollapseToggle = { sectionId ->
                 viewModel.toggleSectionCollapse(sectionId)
             },
+            onItemDragHandleTouched = { vh -> itemTouchHelper.startDrag(vh) },
+            onSectionDragHandleTouched = { vh -> itemTouchHelper.startDrag(vh) },
             searchHistory = { query, sectionId -> viewModel.searchHistory(query, sectionId) },
             coroutineScope = lifecycleScope
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
+        binding.recyclerView.itemAnimator = null  // prevents swap animation after drag
         binding.recyclerView.addItemDecoration(NotepadItemDecoration(this))
+
+        ViewCompat.setWindowInsetsAnimationCallback(
+            binding.recyclerView,
+            object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
+                override fun onProgress(
+                    insets: WindowInsetsCompat,
+                    runningAnimations: MutableList<WindowInsetsAnimationCompat>
+                ): WindowInsetsCompat = insets
+
+                override fun onEnd(animation: WindowInsetsAnimationCompat) {
+                    val imeVisible = ViewCompat.getRootWindowInsets(binding.recyclerView)
+                        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                    if (imeVisible) {
+                        val inputIndex = adapter.currentList
+                            .indexOfFirst { it is ListItem.InlineInput }
+                        if (inputIndex >= 0) {
+                            binding.recyclerView.scrollToPosition(inputIndex)
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private fun setupDragReorder() {
-        val dragCallback = SectionDragCallback(
+        val dragCallback = ListDragCallback(
             adapter = adapter,
             deleteZone = binding.deleteZone,
-            onDragStarted = {
+            onSectionDragStarted = {
                 viewModel.startSectionDrag()
                 showDeleteZone()
             },
-            onReorder = { orderedIds ->
+            onItemDragStarted = {
+                viewModel.startItemDrag()
+            },
+            onSectionReorder = { orderedIds ->
                 viewModel.reorderSections(orderedIds)
                 viewModel.stopSectionDrag()
                 hideDeleteZone()
             },
-            onDeleteDrop = { section ->
+            onSectionDeleteDrop = { section ->
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.delete_section_confirm_title)
                     .setMessage(getString(R.string.delete_section_confirm_message, section.name))
@@ -185,17 +218,25 @@ class MainActivity : AppCompatActivity() {
                         hideDeleteZone()
                     }
                     .show()
-            }
+            },
+            onItemReorder = { triples, snapshot ->
+                viewModel.reorderItems(triples, snapshot)
+                // stopItemDrag() is called inside reorderItems after the DB write completes
+            },
+            onDragEnded = {}
         )
-        ItemTouchHelper(dragCallback).attachToRecyclerView(binding.recyclerView)
+        itemTouchHelper = ItemTouchHelper(dragCallback)
+        itemTouchHelper.attachToRecyclerView(binding.recyclerView)
     }
 
     private fun showDeleteZone() {
         deleteZoneAnimator?.cancel()
-        binding.deleteZone.apply {
-            visibility = View.VISIBLE
-            translationY = height.toFloat()
-            deleteZoneAnimator = ObjectAnimator.ofFloat(this, "translationY", height.toFloat(), 0f).apply {
+        val zone = binding.deleteZone
+        zone.visibility = View.VISIBLE
+        zone.post {
+            val h = zone.height.toFloat()
+            zone.translationY = h
+            deleteZoneAnimator = ObjectAnimator.ofFloat(zone, "translationY", h, 0f).apply {
                 duration = 200
                 start()
             }
@@ -418,6 +459,72 @@ class MainActivity : AppCompatActivity() {
 
     private fun showTutorial() {
         tutorialManager.startTutorial()
+    }
+
+    private fun showItemContextMenu(item: Item, anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menuInflater.inflate(R.menu.popup_item_context, menu)
+            setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.action_edit_item -> {
+                        EditItemDialogFragment.newInstance(item)
+                            .show(supportFragmentManager, "edit_item")
+                        true
+                    }
+                    R.id.action_move_item -> {
+                        showMoveToSectionDialog(item)
+                        true
+                    }
+                    R.id.action_delete_item -> {
+                        viewModel.deleteItem(item)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun showSectionContextMenu(section: Section, anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menuInflater.inflate(R.menu.popup_section_context, menu)
+            setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.action_edit_section -> {
+                        AddSectionDialogFragment.newInstance(section)
+                            .show(supportFragmentManager, "edit_section")
+                        true
+                    }
+                    R.id.action_delete_section -> {
+                        MaterialAlertDialogBuilder(this@MainActivity)
+                            .setTitle(R.string.delete_section_confirm_title)
+                            .setMessage(getString(R.string.delete_section_confirm_message, section.name))
+                            .setPositiveButton(R.string.delete_section) { _, _ ->
+                                viewModel.deleteSection(section)
+                            }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun showMoveToSectionDialog(item: Item) {
+        val sections = viewModel.sections.value.filter {
+            it.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID && it.id != item.sectionId
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.move_item_title)
+            .setItems(sections.map { it.name }.toTypedArray()) { _, index ->
+                viewModel.moveItemToSection(item, sections[index].id)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     companion object {

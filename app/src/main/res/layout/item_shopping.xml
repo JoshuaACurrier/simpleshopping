@@ -34,14 +34,26 @@
 
     <TextView
         android:id="@+id/quantityBadge"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:gravity="center"
         android:textSize="14sp"
         android:textColor="?attr/notepadTextColor"
         android:fontFamily="?attr/notepadFontFamily"
+        android:background="?attr/selectableItemBackgroundBorderless"
         android:visibility="gone"
         tools:text="2"
         tools:visibility="visible" />
+
+    <ImageView
+        android:id="@+id/dragHandle"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:padding="8dp"
+        android:src="@drawable/ic_drag_handle"
+        android:tint="?attr/notepadTextColor"
+        android:contentDescription="@string/drag_reorder"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:visibility="gone" />
 
 </LinearLayout>

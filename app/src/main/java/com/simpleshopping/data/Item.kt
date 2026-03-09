@@ -1,11 +1,14 @@
 package com.simpleshopping.data
 
+import android.os.Parcelable
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.parcelize.Parcelize
 
+@Parcelize
 @Entity(
     tableName = "items",
     foreignKeys = [
@@ -33,4 +36,4 @@ data class Item(
     @ColumnInfo(name = "check_position")
     val checkPosition: Int? = null,
     val quantity: Int = 1
-)
+) : Parcelable

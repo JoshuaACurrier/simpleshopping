@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -18,6 +19,7 @@ import com.simpleshopping.AppMode
 import com.simpleshopping.ShoppingListViewModel
 import com.simpleshopping.data.Item
 import com.simpleshopping.data.ItemHistory
+import com.simpleshopping.data.ItemReorderEntry
 import com.simpleshopping.data.Section
 import com.simpleshopping.databinding.ItemInlineInputBinding
 import com.simpleshopping.databinding.ItemSectionHeaderBinding
@@ -30,13 +32,15 @@ import kotlinx.coroutines.launch
 class ShoppingListAdapter(
     private val onItemChecked: (Item) -> Unit,
     private val onItemRecurringToggle: (Item) -> Unit,
-    private val onItemDelete: (Item) -> Unit,
-    private val onSectionEdit: (Section) -> Unit,
+    private val onItemLongPress: (Item, View) -> Unit,
+    private val onSectionLongPress: (Section, View) -> Unit,
     private val onSectionTapped: (Long) -> Unit,
     private val onInlineItemAdd: (String, Long) -> Unit,
     private val onInlineDismiss: () -> Unit,
     private val onQuantityChange: (Item, Int) -> Unit,
     private val onSectionCollapseToggle: (Long) -> Unit = {},
+    private val onItemDragHandleTouched: (RecyclerView.ViewHolder) -> Unit = {},
+    private val onSectionDragHandleTouched: (RecyclerView.ViewHolder) -> Unit = {},
     private val searchHistory: suspend (String, Long) -> List<ItemHistory> = { _, _ -> emptyList() },
     private val coroutineScope: CoroutineScope? = null
 ) : ListAdapter<ListItem, RecyclerView.ViewHolder>(ListItemDiffCallback()) {
@@ -88,16 +92,33 @@ class ShoppingListAdapter(
 
         fun bind(section: Section, mode: AppMode, isCollapsed: Boolean) {
             binding.sectionName.text = section.name
-            binding.btnEditSection.visibility =
-                if (mode == AppMode.CREATE && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) View.VISIBLE else View.GONE
-            binding.btnEditSection.setOnClickListener { onSectionEdit(section) }
 
-            if (mode == AppMode.CREATE && section.id != ShoppingListViewModel.I_GOT_IT_SECTION_ID) {
+            val isIGotIt = section.id == ShoppingListViewModel.I_GOT_IT_SECTION_ID
+            val isCreate = mode == AppMode.CREATE
+
+            binding.sectionDragHandle.visibility =
+                if (isCreate && !isIGotIt) View.VISIBLE else View.GONE
+
+            @Suppress("ClickableViewAccessibility")
+            binding.sectionDragHandle.setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    onSectionDragHandleTouched(this)
+                    true
+                } else false
+            }
+
+            if (isCreate && !isIGotIt) {
                 binding.root.setOnClickListener { onSectionTapped(section.id) }
+                binding.root.setOnLongClickListener {
+                    onSectionLongPress(section, it)
+                    true
+                }
             } else if (mode == AppMode.SHOPPING) {
                 binding.root.setOnClickListener { onSectionCollapseToggle(section.id) }
+                binding.root.setOnLongClickListener(null)
             } else {
                 binding.root.setOnClickListener(null)
+                binding.root.setOnLongClickListener(null)
             }
         }
     }
@@ -114,14 +135,22 @@ class ShoppingListAdapter(
 
             applyCheckedState(item.isChecked)
 
-            binding.quantityBadge.visibility = if (item.quantity > 1) View.VISIBLE else View.GONE
-            binding.quantityBadge.text = item.quantity.toString()
-            binding.quantityBadge.contentDescription = itemView.context.getString(
-                com.simpleshopping.R.string.quantity_description, item.quantity
-            )
-
             when (mode) {
                 AppMode.CREATE -> {
+                    // Quantity badge: always visible in CREATE mode, shows "1" for qty==1
+                    binding.quantityBadge.visibility = View.VISIBLE
+                    binding.quantityBadge.text = item.quantity.toString()
+                    binding.quantityBadge.contentDescription = itemView.context.getString(
+                        com.simpleshopping.R.string.quantity_description, item.quantity
+                    )
+                    binding.quantityBadge.setOnClickListener {
+                        onQuantityChange(item, item.quantity + 1)
+                    }
+                    binding.quantityBadge.setOnLongClickListener {
+                        onQuantityChange(item, item.quantity - 1)
+                        true
+                    }
+
                     binding.starIcon.visibility = View.VISIBLE
                     binding.starIcon.setImageResource(
                         if (item.isRecurring) android.R.drawable.btn_star_big_on
@@ -133,12 +162,30 @@ class ShoppingListAdapter(
                         onQuantityChange(item, item.quantity + 1)
                     }
                     binding.root.setOnLongClickListener {
-                        onQuantityChange(item, item.quantity - 1)
+                        onItemLongPress(item, it)
                         true
+                    }
+
+                    binding.dragHandle.visibility = View.VISIBLE
+                    @Suppress("ClickableViewAccessibility")
+                    binding.dragHandle.setOnTouchListener { _, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                            onItemDragHandleTouched(this)
+                            true
+                        } else false
                     }
                 }
                 AppMode.SHOPPING -> {
+                    binding.quantityBadge.visibility = if (item.quantity > 1) View.VISIBLE else View.GONE
+                    binding.quantityBadge.text = item.quantity.toString()
+                    binding.quantityBadge.contentDescription = itemView.context.getString(
+                        com.simpleshopping.R.string.quantity_description, item.quantity
+                    )
+                    binding.quantityBadge.setOnClickListener(null)
+                    binding.quantityBadge.setOnLongClickListener(null)
+
                     binding.starIcon.visibility = View.GONE
+                    binding.dragHandle.visibility = View.GONE
 
                     binding.root.setOnClickListener {
                         animateCrossOff(!item.isChecked)
@@ -299,6 +346,20 @@ class ShoppingListAdapter(
         }
     }
 
+    // --- RecyclerView reference (needed to post clearDragState safely) ---
+
+    private var recyclerView: RecyclerView? = null
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        this.recyclerView = recyclerView
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        this.recyclerView = null
+    }
+
     // --- Drag reorder support ---
 
     private var dragList: MutableList<ListItem>? = null
@@ -315,18 +376,58 @@ class ShoppingListAdapter(
         return list.filterIsInstance<ListItem.SectionHeader>().map { it.section.id }
     }
 
+    fun getDragSnapshot(): List<ListItem> = dragList?.toList() ?: currentList
+
+    /** Returns the section ID that owns the item at [position] in the current drag list. */
+    fun getSectionIdAt(position: Int): Long? {
+        val list = dragList ?: currentList
+        for (i in position downTo 0) {
+            val entry = list.getOrNull(i)
+            if (entry is ListItem.SectionHeader) return entry.section.id
+        }
+        return null
+    }
+
+    fun getCurrentItemOrderWithSections(): List<ItemReorderEntry> {
+        val list = dragList ?: currentList
+        val result = mutableListOf<ItemReorderEntry>()
+        var currentSectionId = -1L
+        var counter = 0
+        for (entry in list) {
+            when (entry) {
+                is ListItem.SectionHeader -> { currentSectionId = entry.section.id; counter = 0 }
+                is ListItem.ShoppingItem -> if (currentSectionId != -1L) {
+                    result.add(ItemReorderEntry(entry.item.id, currentSectionId, counter))
+                    counter++
+                }
+                else -> {}
+            }
+        }
+        return result
+    }
+
     @Suppress("NotifyDataSetChanged")
-    fun clearDragState() {
+    fun clearDragState(snapshot: List<ListItem>? = null) {
         dragList = null
-        // moveItem() calls notifyItemMoved() during drag, which desyncs the
-        // RecyclerView's visual positions from the adapter's internal list.
-        // Reset so the next submitList() dispatches correct positional updates.
-        notifyDataSetChanged()
+        // notifyItemMoved() calls during drag desync RecyclerView's view positions from
+        // currentList. We need to reconcile them without causing a visible flash.
+        //
+        // For item drag: submitList(snapshot) updates currentList, then notifyDataSetChanged()
+        // in the commit callback redraws from the now-correct currentList. Both happen before
+        // the next Choreographer frame, so RecyclerView coalesces into a single draw — no twitch.
+        //
+        // For section drag: use rv.post to defer past any in-progress layout pass.
+        if (snapshot != null) {
+            submitList(snapshot) { notifyDataSetChanged() }
+        } else {
+            val rv = recyclerView
+            if (rv != null) rv.post { notifyDataSetChanged() } else notifyDataSetChanged()
+        }
     }
 
     companion object {
         const val VIEW_TYPE_HEADER = 0
-        private const val VIEW_TYPE_ITEM = 1
+        const val VIEW_TYPE_ITEM = 1
         private const val VIEW_TYPE_INPUT = 2
     }
 }
