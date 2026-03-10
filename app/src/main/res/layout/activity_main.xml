@@ -62,24 +62,5 @@
         app:iconTint="@android:color/white"
         android:textColor="@android:color/white" />
 
-    <FrameLayout
-        android:id="@+id/deleteZone"
-        android:layout_width="match_parent"
-        android:layout_height="72dp"
-        android:layout_gravity="bottom"
-        android:background="@color/notepad_delete_zone"
-        android:elevation="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="@string/drop_here_to_delete"
-            android:textColor="@android:color/white"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-    </FrameLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

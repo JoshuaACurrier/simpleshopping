@@ -3,6 +3,7 @@ package com.simpleshopping.dialog
 import android.app.Dialog
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowManager
 import androidx.core.os.BundleCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
@@ -44,6 +45,11 @@ class EditItemDialogFragment : DialogFragment() {
             }
             .setNegativeButton(R.string.cancel, null)
             .create()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
     override fun onDestroyView() {

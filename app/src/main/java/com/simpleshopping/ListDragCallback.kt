@@ -1,7 +1,6 @@
 package com.simpleshopping
 
-import android.view.View
-import androidx.core.content.ContextCompat
+import android.view.animation.OvershootInterpolator
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.simpleshopping.adapter.ListItem
@@ -11,11 +10,9 @@ import com.simpleshopping.data.Section
 
 class ListDragCallback(
     private val adapter: ShoppingListAdapter,
-    private val deleteZone: View,
     private val onSectionDragStarted: () -> Unit,
     private val onItemDragStarted: () -> Unit,
-    private val onSectionReorder: (List<Long>) -> Unit,
-    private val onSectionDeleteDrop: (Section) -> Unit,
+    private val onSectionReorder: (List<Long>, Long?) -> Unit,
     private val onItemReorder: (List<ItemReorderEntry>, List<ListItem>) -> Unit,
     private val onDragEnded: () -> Unit
 ) : ItemTouchHelper.Callback() {
@@ -24,7 +21,6 @@ class ListDragCallback(
 
     private var dragType: DragType? = null
     private var dragStarted = false
-    private var lastOverDeleteZone = false
     private var draggedSection: Section? = null
 
     override fun isLongPressDragEnabled(): Boolean = false
@@ -111,40 +107,16 @@ class ListDragCallback(
         // No swipe support
     }
 
-    override fun onChildDraw(
-        c: android.graphics.Canvas,
-        recyclerView: RecyclerView,
-        viewHolder: RecyclerView.ViewHolder,
-        dX: Float,
-        dY: Float,
-        actionState: Int,
-        isCurrentlyActive: Boolean
-    ) {
-        super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
-
-        // Delete zone highlight only for section drags
-        if (dragType == DragType.SECTION && actionState == ItemTouchHelper.ACTION_STATE_DRAG && isCurrentlyActive) {
-            val itemBottom = viewHolder.itemView.top + viewHolder.itemView.height + dY.toInt()
-            val recyclerBottom = recyclerView.height
-            val isOverDeleteZone = itemBottom > recyclerBottom - deleteZone.height
-            lastOverDeleteZone = isOverDeleteZone && deleteZone.visibility == View.VISIBLE
-            if (deleteZone.visibility == View.VISIBLE) {
-                val colorRes = if (isOverDeleteZone) R.color.notepad_delete_zone_active else R.color.notepad_delete_zone
-                deleteZone.setBackgroundColor(ContextCompat.getColor(recyclerView.context, colorRes))
-                deleteZone.scaleX = if (isOverDeleteZone) 1.05f else 1.0f
-                deleteZone.scaleY = if (isOverDeleteZone) 1.05f else 1.0f
-            }
-        }
-    }
-
     override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
         super.clearView(recyclerView, viewHolder)
-        viewHolder.itemView.apply {
-            alpha = 1.0f
-            scaleX = 1.0f
-            scaleY = 1.0f
-            elevation = 0f
-        }
+        viewHolder.itemView.animate()
+            .alpha(1.0f)
+            .scaleX(1.0f)
+            .scaleY(1.0f)
+            .setDuration(200)
+            .setInterpolator(OvershootInterpolator(2.0f))
+            .withEndAction { viewHolder.itemView.elevation = 0f }
+            .start()
 
         if (!dragStarted) return
         dragStarted = false
@@ -154,20 +126,8 @@ class ListDragCallback(
 
         when (dragType) {
             DragType.SECTION -> {
-                val isOverDeleteZone = lastOverDeleteZone
-                lastOverDeleteZone = false
-                if (isOverDeleteZone) {
-                    val section = draggedSection
-                    if (section != null) {
-                        onSectionDeleteDrop(section)
-                    } else {
-                        onSectionReorder(adapter.getCurrentSectionOrder())
-                        onDragEnded()
-                    }
-                } else {
-                    onSectionReorder(adapter.getCurrentSectionOrder())
-                    onDragEnded()
-                }
+                onSectionReorder(adapter.getCurrentSectionOrder(), draggedSection?.id)
+                onDragEnded()
                 draggedSection = null
             }
             DragType.ITEM -> {

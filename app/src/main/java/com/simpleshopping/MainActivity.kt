@@ -1,7 +1,6 @@
 package com.simpleshopping
 
 import android.animation.ArgbEvaluator
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Rect
@@ -20,11 +19,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.simpleshopping.adapter.ListItem
 import com.simpleshopping.adapter.ShoppingListAdapter
@@ -55,9 +57,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var itemTouchHelper: ItemTouchHelper
     private lateinit var tutorialManager: TutorialManager
     private var currentMode: AppMode? = null
+    private var pendingScrollSectionId: Long? = null
     private var hasShownDoneToast = false
     private var modeColorAnimator: ValueAnimator? = null
-    private var deleteZoneAnimator: ObjectAnimator? = null
     private val touchRect = Rect()
 
     private var toolbarColorCreate = 0
@@ -84,7 +86,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         tutorialManager.finish()
         modeColorAnimator?.cancel()
-        deleteZoneAnimator?.cancel()
         binding.recyclerView.animate().cancel()
     }
 
@@ -161,13 +162,20 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerView.itemAnimator = null  // prevents swap animation after drag
         binding.recyclerView.addItemDecoration(NotepadItemDecoration(this))
 
+        val baseBottomPad = binding.recyclerView.paddingBottom
+
         ViewCompat.setWindowInsetsAnimationCallback(
             binding.recyclerView,
             object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
                 override fun onProgress(
                     insets: WindowInsetsCompat,
                     runningAnimations: MutableList<WindowInsetsAnimationCompat>
-                ): WindowInsetsCompat = insets
+                ): WindowInsetsCompat {
+                    val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+                    val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+                    binding.recyclerView.updatePadding(bottom = maxOf(imeBottom, navBottom) + baseBottomPad)
+                    return insets
+                }
 
                 override fun onEnd(animation: WindowInsetsAnimationCompat) {
                     val imeVisible = ViewCompat.getRootWindowInsets(binding.recyclerView)
@@ -182,42 +190,34 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.recyclerView) { view, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            view.updatePadding(bottom = maxOf(imeBottom, navBottom) + baseBottomPad)
+            insets
+        }
     }
 
     private fun setupDragReorder() {
         val dragCallback = ListDragCallback(
             adapter = adapter,
-            deleteZone = binding.deleteZone,
             onSectionDragStarted = {
+                binding.recyclerView.itemAnimator = DefaultItemAnimator().apply {
+                    removeDuration = 150
+                    addDuration = 220
+                    moveDuration = 0
+                    changeDuration = 0
+                }
                 viewModel.startSectionDrag()
-                showDeleteZone()
             },
             onItemDragStarted = {
                 viewModel.startItemDrag()
             },
-            onSectionReorder = { orderedIds ->
+            onSectionReorder = { orderedIds, sectionId ->
+                pendingScrollSectionId = sectionId
                 viewModel.reorderSections(orderedIds)
                 viewModel.stopSectionDrag()
-                hideDeleteZone()
-            },
-            onSectionDeleteDrop = { section ->
-                MaterialAlertDialogBuilder(this)
-                    .setTitle(R.string.delete_section_confirm_title)
-                    .setMessage(getString(R.string.delete_section_confirm_message, section.name))
-                    .setPositiveButton(R.string.delete_section) { _, _ ->
-                        viewModel.deleteSection(section)
-                        viewModel.stopSectionDrag()
-                        hideDeleteZone()
-                    }
-                    .setNegativeButton(R.string.cancel) { _, _ ->
-                        viewModel.stopSectionDrag()
-                        hideDeleteZone()
-                    }
-                    .setOnCancelListener {
-                        viewModel.stopSectionDrag()
-                        hideDeleteZone()
-                    }
-                    .show()
             },
             onItemReorder = { triples, snapshot ->
                 viewModel.reorderItems(triples, snapshot)
@@ -227,35 +227,6 @@ class MainActivity : AppCompatActivity() {
         )
         itemTouchHelper = ItemTouchHelper(dragCallback)
         itemTouchHelper.attachToRecyclerView(binding.recyclerView)
-    }
-
-    private fun showDeleteZone() {
-        deleteZoneAnimator?.cancel()
-        val zone = binding.deleteZone
-        zone.visibility = View.VISIBLE
-        zone.post {
-            val h = zone.height.toFloat()
-            zone.translationY = h
-            deleteZoneAnimator = ObjectAnimator.ofFloat(zone, "translationY", h, 0f).apply {
-                duration = 200
-                start()
-            }
-        }
-    }
-
-    private fun hideDeleteZone() {
-        deleteZoneAnimator?.cancel()
-        binding.deleteZone.apply {
-            deleteZoneAnimator = ObjectAnimator.ofFloat(this, "translationY", 0f, height.toFloat()).apply {
-                duration = 200
-                addListener(object : android.animation.AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: android.animation.Animator) {
-                        visibility = View.GONE
-                    }
-                })
-                start()
-            }
-        }
     }
 
     private fun setupFab() {
@@ -275,11 +246,18 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     viewModel.listItems.collect { items ->
-                        adapter.submitList(items)
+                        adapter.submitList(items) {
+                            val sectionId = pendingScrollSectionId
+                            if (sectionId != null) {
+                                pendingScrollSectionId = null
+                                val pos = items.indexOfFirst {
+                                    it is ListItem.SectionHeader && it.section.id == sectionId
+                                }
+                                if (pos >= 0) scrollToCenter(pos)
+                            }
 
-                        val inputIndex = items.indexOfFirst { it is ListItem.InlineInput }
-                        if (inputIndex >= 0) {
-                            binding.recyclerView.post {
+                            val inputIndex = items.indexOfFirst { it is ListItem.InlineInput }
+                            if (inputIndex >= 0) {
                                 binding.recyclerView.smoothScrollToPosition(inputIndex)
                             }
                         }
@@ -291,6 +269,16 @@ class MainActivity : AppCompatActivity() {
                         adapter.mode = mode
                         hasShownDoneToast = false
                         updateModeUi(mode)
+                    }
+                }
+
+                launch {
+                    viewModel.isDraggingSections.collect { isDragging ->
+                        if (!isDragging && binding.recyclerView.itemAnimator != null) {
+                            binding.recyclerView.postDelayed({
+                                binding.recyclerView.itemAnimator = null
+                            }, 350L)
+                        }
                     }
                 }
 
@@ -525,6 +513,19 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    private fun scrollToCenter(position: Int) {
+        val lm = binding.recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val scroller = object : LinearSmoothScroller(this) {
+            override fun calculateDtToFit(
+                viewStart: Int, viewEnd: Int,
+                boxStart: Int, boxEnd: Int,
+                snapPreference: Int
+            ) = (boxStart + (boxEnd - boxStart) / 2) - (viewStart + (viewEnd - viewStart) / 2)
+        }
+        scroller.targetPosition = position
+        lm.startSmoothScroll(scroller)
     }
 
     companion object {
